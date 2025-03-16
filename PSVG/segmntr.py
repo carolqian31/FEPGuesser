@@ -175,20 +175,6 @@ def generate_bpe_seg(training: TextIO, save_folder: str):
         count += 1
         if count % 100000 == 0:
             print(count)
-        # info = [password, f"{num}"]
-        # npass = ""
-        # for sec, tag in section_list:
-        #     npass += sec
-        #     info.append(sec)
-        #     info.append(tag)
-        # if password.lower() != npass.lower():
-        #     # Note that we'll not lower X
-        #     # therefore, the best way is to compare password.lower
-        #     # with npass.lower
-        #     print(password)
-        #     print(section_list)
-        #     raise Exception("neq")
-        # print("\t".join(info), end="\n")
 
     sort_and_save_dict(year_dict, save_folder, "year")
     sort_and_save_dict(leets_dict, save_folder, "leets")
