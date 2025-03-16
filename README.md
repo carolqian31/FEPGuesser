@@ -61,3 +61,48 @@ python pretraining_pass.py -e 5 -b 128 -dv 0 1 -lr 1e-04 -str exBERT -sp ./stora
 
 Finally, your trained PassExBert is in folder *./storage/csdn/segment_40_e_5_b_256_mask_0.4*
 
+# PassExBertVAE
+
+## Training 
+Now, we can start to train PassExBertVAE.
+
+Here is a training script.
+
+```
+python train_chunk.py --epoch 10 --batch_size 128 --dropout 0.3 --data csdn --magic_num 79 --experiment_info 
+          passexbert_mask_0.4_first_and_last_layer_magic_79_epoch_10 
+          --bert_dict_path your_trained_PassExBert_dict_path 
+          --config ./bert_config_and_vocab/bert_base_cased/config.json bert_config_and_vocab/csdn/csdn/wordlist_segment_40.json 
+          --passExBert_embed_type first_and_last_layer --device 0 1 
+          --vocab mixed_vocab_path.txt 
+          --max_seq_len 34
+```
+
+the trained PassExBertVAE checkpoints will be saved into folder *data/csdn_bert/passexbert_mask_0.4_first_and_last_layer_magic_79_epoch_10/*
+
+## Sample
+
+Use the following script to sample:
+
+```
+python PassExBert_sample.py --data csdn --vertex_num 2 --batch_size 512 --strategy gaussian 
+          --origin_points_strategy dynamic_beam_random --num_sample 20000001 
+          --vae_path segment_40_e_5_mask_0.4_first_and_last_layer_magic_79_epoch_10/best_dict_epoch9.pt 
+          --sample_batch_size 4096 --config ./bert_config_and_vocab/bert_base_cased/config.json bert_config_and_vocab/csdn/wordlist_segment_40.json 
+          --passExBert_embed_type first_and_last_layer --device 0 1 --vocab bert_config_and_vocab/csdn/wordlist_segment_40.txt 
+          --bert_dict_path your_trained_PassExBert_path --sigma 0.01 --num_workers 16 
+          --beam_size 5 --temperature 1.0 --step_size 0.03
+```
+
+
+Use this code to conduct cross-site attack experiments
+
+```
+python PassExBert_sample.py --data 000webhost --vertex_num 2 --batch_size 512 --strategy gaussian 
+          --origin_points_strategy dynamic_beam_random --num_sample 10000000 
+          --vae_path your_trained_vae_checkpoint_path
+          --sample_batch_size 10240 --config ./bert_config_and_vocab/bert_base_cased/config.json bert_config_and_vocab/000webhost/wordlist_segment_200.json 
+          --passExBert_embed_type first_and_last_layer --device 1 0 --vocab bert_config_and_vocab/000webhost/wordlist_segment_200.txt 
+          --bert_dict_path your_trained_PassExBert_path --sigma 0.01 --num_workers 16 
+          --beam_size 5 --temperature 1.0 --step_size 0.03 --test_data_path your_attacking_dataset_path
+```

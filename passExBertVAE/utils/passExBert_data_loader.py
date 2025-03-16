@@ -10,7 +10,7 @@ from six.moves import cPickle
 from torch.utils.data import DataLoader, Dataset, SequentialSampler, BatchSampler, IterableDataset
 
 from utils.functional import fold, f_and
-from utils.sample_method import get_density_rank
+# from utils.sample_method import get_density_rank
 from utils.frequency_method import get_data_dict, get_frequency_data_list, turn_data_list_to_dict
 from bert_model.tokenization import BertTokenizer
 
@@ -46,6 +46,50 @@ class PassExBertDataset(Dataset):
         attention_mask[:end_idx+2] = 1
 
         return input_ids, attention_mask, length      # length-1: remove [CLS]
+
+
+class PassExBertDynamicDatasetNewCross(Dataset):
+    def __init__(self, data_list, bert_tokenizer, max_len=34):
+        self.data_list = data_list
+        self.bert_tokenizer = bert_tokenizer
+        self.max_len = max_len
+        self.data_len = len(self.data_list)
+        self.cls_idx = self.bert_tokenizer.convert_tokens_to_ids(self.bert_tokenizer.tokenize('[CLS]'))[0]
+        self.sep_idx = self.bert_tokenizer.convert_tokens_to_ids(self.bert_tokenizer.tokenize('[SEP]'))[0]
+        self.pad_idx = self.bert_tokenizer.convert_tokens_to_ids(self.bert_tokenizer.tokenize('[PAD]'))[0]
+        self.new_data = []
+
+    def __len__(self):
+        return self.data_len
+
+    def __getitem__(self, idx):
+        data = self.data_list[idx]
+        data = self.bert_tokenizer.tokenize(data)
+
+        end_idx = self.max_len-2 if len(data) > self.max_len-2 else len(data)
+        length = self.max_len if len(data) > self.max_len else len(data)+2
+        data = data[:end_idx]
+        data = self.bert_tokenizer.convert_tokens_to_ids(data)
+        data = torch.tensor(data)
+
+        input_ids = torch.ones(self.max_len, dtype=torch.long) * self.pad_idx
+        attention_mask = torch.zeros(self.max_len, dtype=torch.long)
+        input_ids[1:1+end_idx] = data
+        input_ids[0] = self.cls_idx
+        input_ids[end_idx+1] = self.sep_idx
+        attention_mask[:end_idx+2] = 1
+
+        return input_ids, attention_mask, length      # length-1: remove [CLS]
+
+    def update_dataset(self):
+        self.data_list.extend(self.new_data)
+        self.data_len = len(self.data_list)
+        now_round_new_attacked_data = self.new_data
+        self.new_data = []
+        return now_round_new_attacked_data
+
+    def add_new_data(self, new_data):
+        self.new_data.extend(new_data)
 
 
 class PassExBertDynamicDataset(IterableDataset):
@@ -180,7 +224,7 @@ class BatchSamplerTillEnd:
 class PassExBertDataProvider:
     def __init__(self, dataset, batch_size, vocab_file_path=None, num_workers=0, max_len=34, is_train=True,
                  valid_rate=0.1, use_frequency=False, is_sample=False, use_random=False, head_num=None, dynamic_dataset=False,
-                 dynamic_init_list=None, restart_idx=None):
+                 dynamic_init_list=None, restart_idx=None, test_data_path=None):
         self.dataset = dataset
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -201,6 +245,10 @@ class PassExBertDataProvider:
 
         self.data_files = [os.path.join(data_path, dataset + '_bert', 'train.txt'),
                            os.path.join(data_path, dataset + '_bert', 'test.txt')]
+        self.test_data_path = self.data_files[1]
+        if test_data_path is not None:
+            self.test_data_path = test_data_path
+        print("test data path: {}".format(self.test_data_path))
         if dynamic_init_list is None:
             self.train_data_list = self.load_train_data()
 
@@ -238,7 +286,7 @@ class PassExBertDataProvider:
                 self.random_data_loader = DataLoader(dataset=self.random_data, num_workers=self.num_workers,
                                                      batch_size=self.batch_size, shuffle=True)
 
-            self.test_data_dict, self.attacked_dict, self.total_num = self.load_test_data_to_dict()
+            self.test_data_dict, self.attacked_dict, self.total_num = self.load_test_data_to_dict(test_data_path=self.test_data_path)
 
         self.sep_token_idx = self.get_sep_idx()
 
@@ -255,11 +303,11 @@ class PassExBertDataProvider:
         data = open(self.data_files[0], "r", encoding = "UTF-8").read().split('\n')
         return data
 
-    def load_test_data_to_dict(self):
+    def load_test_data_to_dict(self, test_data_path):
         test_dict = {}
         attacked_dict = {}
         total_line = 0
-        with open(self.data_files[1], "r", encoding = "UTF-8") as f:
+        with open(test_data_path, "r", encoding = "UTF-8") as f:
             while True:
                 line = f.readline()
                 total_line += 1
@@ -443,3 +491,112 @@ class PassExBertDataProviderFromOneFile:
                 password += token
             password_list.append(password)
         return password_list
+
+
+class PassExBertDataProviderCrossAttack:
+    def __init__(self, seed_data_list, batch_size, test_data_path, vocab_file_path=None, num_workers=0, max_len=34):
+        self.seed_data_list = seed_data_list
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.vocab_file_path = vocab_file_path
+        self.max_len = max_len
+        self.test_data_path = test_data_path
+
+        print("test data path: {}".format(self.test_data_path))
+
+        self.bert_tokenizer = BertTokenizer(vocab_file=self.vocab_file_path, do_lower_case=False)
+
+        self.dataset = PassExBertDynamicDatasetNewCross(data_list=self.seed_data_list,
+                                                        bert_tokenizer=self.bert_tokenizer,
+                                                        max_len=self.max_len)
+
+        self.dataloader = DataLoader(dataset=self.dataset, batch_size=self.batch_size,
+                                     num_workers=self.num_workers, shuffle=False)
+
+        self.test_data_dict, self.attacked_dict, self.total_num = self.load_test_data_to_dict(
+            test_data_path=self.test_data_path)
+
+        self.sep_token_idx = self.get_sep_idx()
+
+    def get_padding_idx(self):
+        return self.bert_tokenizer.convert_tokens_to_ids(self.bert_tokenizer.tokenize('[PAD]'))[0]
+
+    def get_cls_idx(self):
+        return self.bert_tokenizer.convert_tokens_to_ids(self.bert_tokenizer.tokenize('[CLS]'))[0]
+
+    def get_sep_idx(self):
+        return self.bert_tokenizer.convert_tokens_to_ids(self.bert_tokenizer.tokenize('[SEP]'))[0]
+
+    def load_test_data_to_dict(self, test_data_path):
+        test_dict = {}
+        attacked_dict = {}
+        total_line = 0
+        with open(test_data_path, "r", encoding = "UTF-8") as f:
+            while True:
+                line = f.readline()
+                total_line += 1
+                if not line:
+                    break
+                line = line.strip()
+                if line not in test_dict:
+                    test_dict[line] = 1
+                    attacked_dict[line] = 0
+                else:
+                    test_dict[line] += 1
+        return test_dict, attacked_dict, total_line
+
+    def convert_ids_to_tokens(self, ids_list):
+        token_list = []
+        for ids in ids_list:
+            token_list.append(self.bert_tokenizer.convert_ids_to_tokens(ids))
+        return token_list
+
+    def __iter__(self):
+        return iter(self.dataloader)
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def convert_ids_to_passwords(self, ids_list):
+        password_list = []
+        for ids in ids_list:
+            tokens = self.bert_tokenizer.convert_ids_to_tokens(ids)
+            password = ''
+            for token in tokens:
+                if token == '[SEP]':
+                    break
+                if token == '[CLS]':
+                    continue
+                if token.startswith('##'):
+                    token = token[2:]
+                password += token
+            password_list.append(password)
+        return password_list
+
+    def attack(self, password_list):
+        """
+        passwords in password_list that haven't attack successfully before
+        """
+        attacked_num = 0
+        success_attack_passwords = []
+        for index, password in enumerate(password_list):
+            if password in self.test_data_dict and self.attacked_dict[password] == 0:
+                self.attacked_dict[password] = 1
+                attacked_num += self.test_data_dict[password]
+                success_attack_passwords.append(password)
+
+        return attacked_num, attacked_num/self.total_num, success_attack_passwords
+
+    def add_dynamic_data(self, password_list):
+        self.dataset.add_new_data(password_list)
+
+    def updata_dataset(self):
+        print("before seed dataset len: {}".format(len(self.dataset.data_list)))
+        new_round_attacked_list = self.dataset.update_dataset()
+        print("update seed dataset len: {}".format(len(self.dataset.data_list)))
+        self.dataloader = DataLoader(dataset=self.dataset, batch_size=self.batch_size,
+                                     num_workers=self.num_workers, shuffle=False)
+        return new_round_attacked_list
+
+    # def get_all_success_attack_passwords(self):
+    #     return self.

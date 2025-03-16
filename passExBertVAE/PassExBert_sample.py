@@ -59,6 +59,7 @@ def setup():
                         choices=['fixed', 'freqX'], help='the strategy we use to choose vertex')
     parser.add_argument('--beam_size', type=int, default=None, help='the beam num when using beam search')
     parser.add_argument('--temperature', type=float, default=None, help='the temperature when using beam search')
+    parser.add_argument('--test_data_path', type=str, default=None, help='test data path(default is origin test path)')
     args = parser.parse_args()
     return args
 
@@ -75,7 +76,7 @@ def get_file_saved_path(args):
     if not os.path.exists(folder_path):
         print('create {}'.format(folder_path))
         os.makedirs(folder_path)
-    folder_path = os.path.join(folder_path, args.vae_path.split('/')[0])
+    folder_path = os.path.join(folder_path, args.vae_path.split('/')[-2])
     if not os.path.exists(folder_path):
         print('create {}'.format(folder_path))
         os.makedirs(folder_path)
@@ -104,11 +105,15 @@ def get_file_saved_path(args):
     if 'beam' in args.origin_points_strategy:
         file_name += "_beam_size_" + str(args.beam_size) + "_temperature_" + str(args.temperature)
 
-    temp_attack_dict_save_path = os.path.join(folder_path, "temp_attack_pass_dict.pkl")
-    temp_attack_success_path = os.path.join(folder_path, "temp_attack_success.pkl")
-    temp_samplling_idx_path = os.path.join(folder_path, "temp_sampling_idx.pkl")
+    if args.test_data_path is not None and args.data not in args.test_data_path:
+        file_name += "_cross_test"
+    temp_attack_dict_save_path = os.path.join(folder_path,  file_name + ".temp_attack_pass_dict.pkl")
+    temp_attack_success_path = os.path.join(folder_path, file_name + ".temp_attack_success.pkl")
+    temp_samplling_idx_path = os.path.join(folder_path, file_name + ".temp_sampling_idx.pkl")
+    args_file_save_path = os.path.join(folder_path, file_name + ".args.txt")
+    first_round_stop_pass_idx_path = os.path.join(folder_path, file_name + ".first_round_stop_pass_idx.txt")
     return os.path.join(folder_path, file_name + ".txt"), temp_attack_dict_save_path, temp_attack_success_path, \
-           temp_samplling_idx_path
+           temp_samplling_idx_path, args_file_save_path, first_round_stop_pass_idx_path
 
 
 def generate_now_guess_rate(guess_dict, test_dict, total_test_dict_len):
@@ -129,13 +134,16 @@ if __name__ == '__main__':
         os.makedirs(args.guess_folder)
         print("create folder {}".format(args.guess_folder))
 
-    file_path = os.path.join(args.guess_folder, args.data + '_guess.txt')
+    # file_path = os.path.join(args.guess_folder, args.data + '_guess.txt')
+
+
 
     set_seed(args.seed)
 
     data_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
     exbert_data_folder = os.path.join(data_folder, args.data + '_bert')
     vae_path = os.path.join(exbert_data_folder, args.vae_path)
+    # vae_path = args.vae_path
 
     if args.device == -1:
         device = 'cpu'
@@ -158,7 +166,7 @@ if __name__ == '__main__':
         frequency_data_provider = PassExBertDataProvider(dataset=args.data, batch_size=args.batch_size,
                                                vocab_file_path=args.vocab, num_workers=args.num_workers,
                                                max_len=args.max_seq_len, use_frequency=True, use_random=False,
-                                               is_sample=True, head_num=args.head_num)
+                                               is_sample=True, head_num=args.head_num, test_data_path=args.test_data_path)
         pad_token_id = frequency_data_provider.get_padding_idx()
         total_test_dict_len = frequency_data_provider.total_num
         test_dict = frequency_data_provider.test_data_dict
@@ -167,7 +175,7 @@ if __name__ == '__main__':
         random_data_provider = PassExBertDataProvider(dataset=args.data, batch_size=args.batch_size,
                                                       vocab_file_path=args.vocab, num_workers=args.num_workers,
                                                       max_len=args.max_seq_len, use_frequency=False, use_random=True,
-                                                      is_sample=True)
+                                                      is_sample=True, test_data_path=args.test_data_path)
         pad_token_id = random_data_provider.get_padding_idx()
         total_test_dict_len = random_data_provider.total_num
         test_dict = random_data_provider.test_data_dict
@@ -176,7 +184,7 @@ if __name__ == '__main__':
         gaussian_step_data_provider = PassExBertDataProvider(dataset=args.data, batch_size=args.batch_size,
                                                       vocab_file_path=args.vocab, num_workers=args.num_workers,
                                                       max_len=args.max_seq_len, use_frequency=False, use_random=True,
-                                                      is_sample=True)
+                                                      is_sample=True, test_data_path=args.test_data_path)
         pad_token_id = gaussian_step_data_provider.get_padding_idx()
         total_test_dict_len = gaussian_step_data_provider.total_num
         test_dict = gaussian_step_data_provider.test_data_dict
@@ -205,6 +213,7 @@ if __name__ == '__main__':
         passExBertRVAE.to(device)
 
     if len(device_ids) > 1:
+        print(vae_path)
         passExBertRVAE.module.load_state_dict(torch.load(vae_path, map_location='cpu'), strict=False)
     else:
         passExBertRVAE.load_state_dict(torch.load(vae_path, map_location='cpu'), strict=False)
@@ -215,9 +224,12 @@ if __name__ == '__main__':
     passExBert_rvae_sampler_list = []
     guess_dict = {}
 
-    saved_file_path, temp_pass_dict_path, temp_attack_success_path, temp_sampling_idx_path = get_file_saved_path(args)
+    saved_file_path, temp_pass_dict_path, temp_attack_success_path, temp_sampling_idx_path, args_file_path, \
+    first_round_stop_pass_idx_path = get_file_saved_path(args)
     print("file will be saved to {}".format(saved_file_path))
-
+    with open(args_file_path, 'w') as f:
+        f.write(str(args))
+        print("args message saved to {}".format(args_file_path))
 
     if frequency_data_provider is not None:
         if len(device_ids) > 1:
@@ -377,6 +389,10 @@ if __name__ == '__main__':
                     if len(dynamic_attacked_list) > 0:
                         if first_reach_end:
                             first_reach_end = False
+                            with open(first_round_stop_pass_idx_path, 'w') as f:
+                                f.write(str(len(guess_dict)))
+                            print("generate {} passwords, save first round stop idx file {}"
+                                  .format(len(guess_dict), first_round_stop_pass_idx_path))
                         else:
                             sigma += args.step_size
                             print("increase sigma to {}".format(sigma))
@@ -388,12 +404,14 @@ if __name__ == '__main__':
                             pickle.dump(dynamic_attacked_list, f)
                             print("save temp file {}".format(temp_attack_success_path))
 
-                        print("attacked {} passwords in total".format(len(dynamic_attacked_list)))
+                        print("attacked {} passwords successfully in total".format(len(dynamic_attacked_list)))
+                        print("attacked {} passwords in all".format(len(guess_dict)))
                         dynamic_data_provider = PassExBertDataProvider(dataset=args.data, batch_size=args.batch_size,
                                                       vocab_file_path=args.vocab, num_workers=args.num_workers,
                                                       max_len=args.max_seq_len, use_frequency=False, use_random=False,
                                                       dynamic_dataset=True, is_sample=True,
-                                                                            dynamic_init_list=dynamic_attacked_list)
+                                                                            dynamic_init_list=dynamic_attacked_list,
+                                                                       test_data_path=args.test_data_path)
                         if len(device_ids) > 1:
                             passExBert_rvae_sampler = passExBertRVAE.module.sampler(dynamic_data_provider,
                                                                                     origin_point_strategy='dynamic_beam',
@@ -408,6 +426,25 @@ if __name__ == '__main__':
                                                                                    temperature=args.temperature)
                         passExBert_rvae_sampler_list.append(passExBert_rvae_sampler)
                         first_init_dynamic = False
+                        epoch_time += 1
+
+                    elif args.origin_points_strategy == 'beam_search_random':
+                        sigma += args.step_size
+                        print("increase sigma to {}".format(sigma))
+
+                        random_data_provider = PassExBertDataProvider(dataset=args.data, batch_size=args.batch_size,
+                                                                      vocab_file_path=args.vocab,
+                                                                      num_workers=args.num_workers,
+                                                                      max_len=args.max_seq_len, use_frequency=False,
+                                                                      use_random=True,
+                                                                      is_sample=True,
+                                                                      test_data_path=args.test_data_path)
+                        passExBert_rvae_sampler = passExBertRVAE.module.sampler(random_data_provider,
+                                                                                origin_point_strategy='beam_search_random',
+                                                                                vertex_num=args.vertex_num,
+                                                                                beam_size=args.beam_size,
+                                                                                temperature=args.temperature)
+                        passExBert_rvae_sampler_list.append(passExBert_rvae_sampler)
                         epoch_time += 1
                     break
 
