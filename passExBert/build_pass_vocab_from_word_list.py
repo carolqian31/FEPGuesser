@@ -7,13 +7,12 @@ import numpy as np
 import multiprocessing as mp
 from sklearn.model_selection import train_test_split
 
-from exBert import BertTokenizer
-from exBert.tokenization import load_vocab
+from exBERT import BertTokenizer
+from exBERT.tokenization import load_vocab
 
 
 class VocabProcessor:
-    def __init__(self, dataset='csdn', origin_vocab_path=None, word_list_path=None, train_data_path=None):
-        self.dataset = dataset
+    def __init__(self, origin_vocab_path=None, word_list_path=None, train_data_path=None):
         self.word_list_set = set()
         self.word_list_path = word_list_path
         self.max_rule_length = 0
@@ -30,11 +29,6 @@ class VocabProcessor:
         self.clean_train_data_list = self.get_clean_data()
 
         print("vocabProcessor init finished")
-
-
-    # def get_raw_dataset_txt_path(self):
-    #     return os.path.join('/home/passwordfile/source-file', self.dataset+'.txt')
-        # return os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(__file__))), 'data', self.dataset+'.txt')
 
     def get_clean_data(self):
         if not os.path.exists(self.train_data_path):
@@ -125,15 +119,31 @@ class VocabProcessor:
                         sub_sentence = password[0:max_cut_length]
 
 
-if __name__=='__main__':
-    dataset = '000webhost'
-    word_list_path = '../PSVG/Rules/000webhost_segment/wordlist_segment_200.txt'
-    origin_vocab_path = 'bert_base_cased/vocab.txt'
-    output_vocab_path = 'config_and_vocab/000webhost/wordlist_segment_200.txt'
+def setup():
+    parser = argparse.ArgumentParser(description='build password vocab from wordlist')
+    parser.add_argument('--word_list_path', type=str,  help='wordlist txt path')
+    parser.add_argument('--origin_vocab_path', type=str, default='bert_base_cased/vocab.txt',
+                        help='the original natural language vocab txt path')
+    parser.add_argument('--output_vocab_path', type=str, help='the output mixed vocabulary txt path')
+    parser.add_argument('--train_data_path', type=str, help='the training data txt path')
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == '__main__':
+    args = setup()
+    word_list_path = args.word_list_path
+    origin_vocab_path = args.origin_vocab_path
+    output_vocab_path = args.output_vocab_path
+    train_data_path = args.train_data_path
+
+    # word_list_path = '../PSVG/Rules/000webhost_segment/wordlist_segment_200.txt'
+    # origin_vocab_path = 'bert_base_cased/vocab.txt'
+    # output_vocab_path = 'config_and_vocab/000webhost/wordlist_segment_200.txt'
     #
-    #
-    train_data_path = './data/000webhost_bert/train.txt'
-    vocabProcessor = VocabProcessor(dataset=dataset, origin_vocab_path=origin_vocab_path, word_list_path=word_list_path,
+    # train_data_path = './data/000webhost_bert/train.txt'
+
+    vocabProcessor = VocabProcessor(origin_vocab_path=origin_vocab_path, word_list_path=word_list_path,
                                     train_data_path=train_data_path)
 
     vocabProcessor.generate_pass_vocab(vocabProcessor.clean_train_data_list, output_vocab_path)
