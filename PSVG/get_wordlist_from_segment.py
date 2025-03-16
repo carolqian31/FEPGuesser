@@ -1,5 +1,5 @@
 import os
-
+import argparse
 
 def get_wordlist_freq_from_file_list(file_list):
     """
@@ -35,9 +35,20 @@ def get_file_list_from_folder(folder):
     return file_list
 
 
+def setup():
+    parser = argparse.ArgumentParser(description='get_wordlist_from_segment')
+    parser.add_argument('--folder_path', type=str,  help='the segment folder path')
+    parser.add_argument('--threshold', type=int, help='the threshold of add password patterns')
+    parser.add_argument('--save_path', type=int, help='wordlist segment save path')
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == '__main__':
-    folder_path = '../PSVG/Rules/000webhost_segment'
-    threshold = 50
+    args = setup()
+
+    folder_path = args.folder_path
+    threshold = args.threshold
     file_list = get_file_list_from_folder(folder_path)
     word_dict = get_wordlist_freq_from_file_list(file_list)
 
@@ -51,8 +62,9 @@ if __name__ == '__main__':
         words_chosen.append(word)
 
     print(len(words_chosen))
-
-    saved_path = '../PSVG/Rules/000webhost_segment/wordlist_segment_{}.txt'.format(threshold)
+    #
+    # saved_path = '../PSVG/Rules/000webhost_segment/wordlist_segment_{}.txt'.format(threshold)
+    save_path = args.save_path
 
     with open(saved_path, 'w') as f:
         for word in words_chosen:
