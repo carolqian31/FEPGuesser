@@ -39,7 +39,7 @@ def setup():
     parser = argparse.ArgumentParser(description='get_wordlist_from_segment')
     parser.add_argument('--folder_path', type=str,  help='the segment folder path')
     parser.add_argument('--threshold', type=int, help='the threshold of add password patterns')
-    parser.add_argument('--save_path', type=int, help='wordlist segment save path')
+    parser.add_argument('--save_path', type=str, help='wordlist segment save path')
     args = parser.parse_args()
     return args
 
