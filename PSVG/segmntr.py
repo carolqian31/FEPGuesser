@@ -62,7 +62,7 @@ def v41seg(training: TextIO, test_set: TextIO, save2: TextIO) -> None:
     pass
 
 
-def v41_seg_test(training, save2):
+def v41_seg_test(training, save2, testing=None):
     if not save2.writable():
         raise Exception(f"{save2.name} is not writable")
 
@@ -70,14 +70,23 @@ def v41_seg_test(training, save2):
     for password in training:
         password = password.strip("\r\n")
         multiword_detector.train(password)
-    # training.close()
 
-    training.seek(0)
-    pwd_counter = defaultdict(int)
-    for password in training:
-        password = password.strip("\r\n")
-        pwd_counter[password] += 1
-    training.close()
+    if testing is not None:
+        training.close()
+
+        pwd_counter = defaultdict(int)
+        for password in testing:
+            password = password.strip("\r\n")
+            pwd_counter[password] += 1
+        testing.close()
+
+    else:
+        training.seek(0)
+        pwd_counter = defaultdict(int)
+        for password in training:
+            password = password.strip("\r\n")
+            pwd_counter[password] += 1
+        training.close()
 
     count = 0
     for password, num in pwd_counter.items():
@@ -268,7 +277,7 @@ def main():
         generate_bpe_seg(training=training, save_folder=save2)
     elif choice == gen_pcfg_seg:
         with open(save2, "w") as f:
-            v41_seg_test(training=training, save2=f)
+            v41_seg_test(training=training, save2=f, testing=args.testing)
     else:
         print("Unknown method or method has not been implemented", file=sys.stderr)
         sys.exit(-1)
