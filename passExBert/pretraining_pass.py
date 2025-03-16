@@ -18,7 +18,7 @@ from tqdm import tqdm
 import torch.nn as nn
 import os
 import random
-from exBert import BertTokenizer, BertAdam
+from exBERT import BertTokenizer, BertAdam
 from utils.Logger import Logger
 
 
@@ -50,7 +50,7 @@ def setup():
 
     parser.add_argument('-wp', '--warmup', default=-1, type=float,
                     help='portion of all training itters to warmup, -1 means not using warmup')
-    parser.add_argument('-t_ex_only', '--train_extension_only', default=True, type=bool,
+    parser.add_argument('-t_ex_only', '--train_extension_only', default=1, type=int,
                     help='train only the extension module')
 
     parser.add_argument('-t_with_nlp_word', '--train_with_natural_language_word', action='store_true', default=False,
